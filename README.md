@@ -1,0 +1,5 @@
+
+```
+mkdir -p ~/.templates.d
+
+```
