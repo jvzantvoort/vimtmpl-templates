@@ -1,4 +1,14 @@
-#!/bin/bash
+---
+[switches]
+safe = enable safety switches
+header = add basic header
+pathmunge = enable pathmunge function
+staging = enable staging function
+getopts = enable getopt
+print_status = print status lines
+---
+#!/bin/bash {{ if index .Flags "safe" }} -eu {{ end }}
+{{ if .Enabled "header" }}
 #===============================================================================
 #
 #         FILE:  {{.ScriptName}}
@@ -18,42 +28,118 @@
 # Copyright (C) {{.Year}} {{.Copyright}}
 #
 #===============================================================================
+{{ end }}
 C_SCRIPTPATH="$(readlink -f "$0")"
 C_SCRIPTNAME="$(basename "$C_SCRIPTPATH" .sh)"
-C_FACILITY="local0"
 
 readonly C_SCRIPTPATH
 readonly C_SCRIPTNAME
-readonly C_FACILITY
+{{ if .Enabled "print_status" }}
+# Constants: Screen measurements {{"{{{"}}
+# Get screenwidth
+SCREENWIDTH="$(tput cols)"
+SCREENWIDTH="$((SCREENWIDTH - (SCREENWIDTH % 40)))"
+[[ "${SCREENWIDTH}" -lt 80 ]] && SCREENWIDTH=80
 
-declare -xr LANG="C"
+SCREENWIDTH="$((SCREENWIDTH - 20))"
+MSG_PADSTR_LEN="${SCREENWIDTH}"
+MSG_FORMAT="%-${SCREENWIDTH}s [ %s%-7s%s ]\n"
 
-function logging()
-{
-  local priority="$1"; shift
-  logger -p "${C_FACILITY}.${priority}" -i -s -t "${C_SCRIPTNAME}" -- "${priority} $*"
+unset SCREENWIDTH
+
+readonly MSG_PADSTR_LEN
+readonly MSG_FORMAT
+# }}}
+
+# Constants: Screen colors {{"{{{"}}
+COLOR_RED=$(tput -Tansi setaf 1)
+COLOR_GREEN=$(tput -Tansi setaf 2)
+COLOR_GREY=$(tput -Tansi setaf 072)
+COLOR_YELLOW=$(tput -Tansi setaf 11)
+COLOR_ORANGE=$(tput -Tansi setaf 208)
+COLOR_RESET=$(tput -Tansi sgr0)
+
+readonly COLOR_RED
+readonly COLOR_GREEN
+readonly COLOR_GREY
+readonly COLOR_YELLOW
+readonly COLOR_ORANGE
+readonly COLOR_RESET
+# }}}
+
+# Functions: messages {{"{{{"}}
+#shellcheck disable=SC2034
+function strrep() { for x in $(seq 1 "${1}"); do printf "-"; done; }
+
+function print_msg() {
+  local color=$1
+  shift
+  local state=$1
+  shift
+  local msg="$*"
+  local pad
+  pad="${#msg}"                   # length of the string
+  pad="$((MSG_PADSTR_LEN - pad))" # subtract it from then screen width
+  padstr="$(strrep "${pad}")"     # create padding
+
+  #shellcheck disable=SC2059
+  printf "${MSG_FORMAT}" "$msg ${padstr}" "${color}" "${state}" "${COLOR_RESET}"
+}
+function print_title() { print_msg "${COLOR_GREY}" "-------" "$@"; }
+function print_ok() { print_msg "${COLOR_GREEN}" "SUCCESS" "$@"; }
+function print_nok() { print_msg "${COLOR_RED}" "FAILURE" "$@"; }
+function print_fatal() { print_msg "${COLOR_RED}" "FATAL" "$@"; }
+function print_warning() { print_msg "${COLOR_ORANGE}" "WARNING" "$@"; }
+function print_unknown() { print_msg "${COLOR_YELLOW}" "UNKNOWN" "$@"; }
+function print_debug() {
+  [[ "${DEBUG}" != "yes" ]] && return 0
+  printf "%s%s%s\n" "${COLOR_GREY}" "$*" "${COLOR_RESET}"
 }
 
-function logging_err()   { logging "err" "$@";   }
-function logging_info()  { logging "info" "$@";  }
-function logging_warn()  { logging "warn" "$@";  }
-function logging_debug() { logging "debug" "$@"; }
-
-function script_exit()
-{
-  local string="$1"
-  local retv="${2:-0}"
-  if [ "$retv" = "0" ]
-  then
-    logging_info "$string"
+function test_result() {
+  local retv=$1
+  local message=$2
+  if [[ "${retv}" == "0" ]]; then
+    print_ok "${message}"
   else
-    logging_err "$string"
+    print_nok "${message}"
   fi
-  exit "$retv"
 }
 
-function pathmunge()
-{
+function test_fatal() {
+  local retv=$1
+  local message=$2
+  if [[ "${retv}" == "0" ]]; then
+    print_ok "${message}"
+  else
+    print_fatal "${message}"
+    exit 1
+  fi
+}
+
+function err127() {
+  which "$1" >/dev/null 2>&1
+  test_fatal "$?" "Command $1 is available"
+}
+# }}}
+{{ end }}
+{{ if .Enabled "getopts" }}
+G_VERBOSE="false"
+G_INPUT=""
+{{ end }}
+{{ if .Enabled "getopts" }}
+help_usage() {
+  printf "%s [-h] [-v] [-i <inputfile>]\n\n" "$0"
+  printf " -h             print help\n"
+  printf " -v             verbose output\n"
+  printf " -i <inputfile> specify inputfile\n"
+
+  exit 0
+}
+{{ end }}
+die() { printf "FATAL: %s\n", "$1"; exit 1; }
+{{ if .Enabled "pathmunge" }}
+pathmunge() {
   [ -d "$1" ] || return
 
   if echo "$PATH" | grep -E -q "(^|:)$1($|:)"
@@ -68,20 +154,50 @@ function pathmunge()
       PATH=$1:$PATH
   fi
 }
+{{ end }}
+{{ if .Enabled "staging" }}
+mkstaging_area() {
+  STAGING_AREA="$(mktemp -d /tmp/{{.ScriptName}}.XXXXXX)"
+  return "$?"
+}
+rmstaging_area() {
+  [[ -n "${STAGING_AREA}" ]] || return 1
+  [[ -e "${STAGING_AREA}" ]] || return 2
+  rm -rf "${STAGING_AREA}"
 
+}
+{{ end }}
+{{ if .Enabled "header" }}
 #------------------------------------------------------------------------------#
 #                                    Main                                      #
 #------------------------------------------------------------------------------#
+{{ end }}
+{{ if .Enabled "getopts" }}
+while getopts "vi:h" argname; do
+  case "$argname" in
+    v) G_VERBOSE="true";;
+    i) G_INPUT="$OPTARG";;
+    \?)
+      echo "Invalid option -$OPTARG"
+      help_usage
+    ;;
+    h|*) help_usage;;
+  esac
+done
+shift $(( OPTIND - 1 ))
+{{ end }}
+{{ if .Enabled "staging" }}
+trap rmstaging_area EXIT INT TERM
+mkstaging_area
+{{ end }}
 
-logging_info "start"
-
-# setup path
-#---------------------------------------
-pathmunge "${HOME}/bin" "after"
-export PATH
 
 
-script_exit "end"
+
+
+{{ if .Enabled "header" }}
 #------------------------------------------------------------------------------#
 #                                  The End                                     #
 #------------------------------------------------------------------------------#
+{{ end }}
+# vim: foldmethod=marker
