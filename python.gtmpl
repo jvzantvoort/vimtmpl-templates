@@ -1,21 +1,37 @@
+---
+[switches]
+header = Add basic header
+version = Add version
+yaml = Add yaml code
+---
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """{{.ScriptName}} - {{.Description}}
 
-
 Copyright (C) {{.Year}} {{.User}}
-
 """
 
 import argparse
 import sys
 import os
 
+{{ if .Enabled "yaml" }}
+from yaml import load, dump
+try:
+    from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:
+    from yaml import Loader, Dumper
+{{ end }}
+
+{{ if .Enabled "header" }}
 __author__ = "{{.User}}"
 __copyright__ = "{{.Copyright}}"
 __email__ = "{{.MailAddress}}"
 __license__ = "{{.License}}"
+{{ end }}
+{{ if .Enabled "version" }}
 __version__ = "1.0.1"
+{{ end }}
 
 
 def parse_args(args):
@@ -28,10 +44,12 @@ def parse_args(args):
     retv = dict()
     parser = argparse.ArgumentParser()
 
+{{ if .Enabled "version" }}
     parser.add_argument(
         '--version',
         action='version',
         version='{{.ScriptName}} {ver}'.format(ver=__version__))
+{{ end }}
 
     parser.add_argument('rest', nargs='*')
 
