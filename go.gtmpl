@@ -1,5 +1,23 @@
+---
+[switches]
+header = Add basic header
+---
 package main
-
+{{ if .Enabled "header" }}
+//===============================================================================
+//
+//         FILE:  {{.ScriptName}}
+//
+//  DESCRIPTION:  {{.Description}}
+//
+//       AUTHOR:  {{.User}} ({{.UserName}}), {{.MailAddress}}
+//      COMPANY:  {{.Company}}
+//      CREATED:  {{.Date}}
+//
+// Copyright (C) {{.Year}} {{.Copyright}}
+//
+//===============================================================================
+{{ end }}
 import (
 	"fmt"
 )
