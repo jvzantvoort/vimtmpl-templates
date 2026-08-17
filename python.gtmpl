@@ -2,7 +2,7 @@
 [switches]
 header = Add basic header
 version = Add version
-yaml = Add yaml code
+logging = Add logging support
 ---
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
@@ -14,14 +14,7 @@ Copyright (C) {{.Year}} {{.User}}
 import argparse
 import sys
 import os
-
-{{ if .Enabled "yaml" }}
-from yaml import load, dump
-try:
-    from yaml import CLoader as Loader, CDumper as Dumper
-except ImportError:
-    from yaml import Loader, Dumper
-{{ end }}
+{{ if .Enabled "logging" }}import logging{{ end }}
 
 {{ if .Enabled "header" }}
 __author__ = "{{.User}}"
@@ -29,30 +22,59 @@ __copyright__ = "{{.Copyright}}"
 __email__ = "{{.MailAddress}}"
 __license__ = "{{.License}}"
 {{ end }}
-{{ if .Enabled "version" }}
-__version__ = "1.0.1"
+{{ if .Enabled "version" }}__version__ = "1.0.1"{{ end }}
+{{ if .Enabled "logging" }}
+def setup_logger(**kwargs):
+    """Setup logging."""
+    logger = logging.getLogger("app")
+
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter(
+            fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        ))
+        logger.addHandler(handler)
+
+    logger.setLevel(logging.INFO)
+
+    if kwargs['verbose']:
+        logger.setLevel(logging.DEBUG)
+
+    if kwargs['quiet']:
+        logger.setLevel(logging.WARNING)
+
+    logger.propagate = False
+    return logger
 {{ end }}
 
-
 def parse_args(args):
-    """
-    Parse command line parameters
+    """Parse command line parameters.
 
     :param args: command line parameters as list of strings
     :return: command line parameters as :obj:`argparse.Namespace`
     """
-    retv = dict()
-    parser = argparse.ArgumentParser()
+    retv = {}
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawTextHelpFormatter)
 
 {{ if .Enabled "version" }}
     parser.add_argument(
-        '--version',
-        action='version',
-        version='{{.ScriptName}} {ver}'.format(ver=__version__))
+        "--version",
+        action="version",
+        version="{{.ScriptName}} {ver}".format(ver=__version__)
+    )
 {{ end }}
-
-    parser.add_argument('rest', nargs='*')
-
+{{ if .Enabled "logging" }}
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument(
+        "-v", "--verbose", action="store_true", help="enable debug logging"
+    )
+    verbosity.add_argument(
+        "-q", "--quiet", action="store_true", help="only show warnings and above"
+    )
+{{ end }}
+    parser.add_argument("rest", nargs="*")
 
     opts = vars(parser.parse_args(args))
 
@@ -62,10 +84,11 @@ def parse_args(args):
 
     return retv
 
-
 def main(args):
     args = parse_args(args)
-
+{{ if .Enabled "logging" }}
+    LOGGER = setup_logger(**args)
+{{ end }}
 
 if __name__ == "__main__":
     main(sys.argv[1:])
